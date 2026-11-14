@@ -1,4 +1,5 @@
 import re
+import time
 
 from transformers import pipeline
 
@@ -120,3 +121,79 @@ def answer(message, history=None):
 
 if __name__ == "__main__":
     print(answer("What is a transformer?"))
+
+
+#for time benchmarking
+# def answer(message, history=None):
+#     total_start = time.perf_counter()
+#     history = clean_history(history or [])
+
+#     rewrite_time = 0.0
+#     retrieval_time = 0.0
+#     generation_time = 0.0
+
+#     pieces = []
+
+#     if not SMALL_TALK.match(message.strip()):
+#         # Measure query rewriting
+#         start = time.perf_counter()
+#         query = standalone_question(message, history)
+#         rewrite_time = time.perf_counter() - start
+
+#         # Measure ChromaDB retrieval
+#         start = time.perf_counter()
+#         how_many = 4 if any(
+#             w in message.lower() for w in BROAD_WORDS
+#         ) else 3
+
+#         pieces = find_pieces(query, how_many=how_many)
+#         retrieval_time = time.perf_counter() - start
+
+#     context = "\n\n".join(
+#         f'[{p["file"]}, page {p["page"]}]\n{p["text"]}'
+#         for p in pieces
+#     )
+
+#     if context:
+#         user_turn = (
+#             f"Course material excerpts:\n{context}"
+#             f"\n\nStudent message: {message}"
+#         )
+#     else:
+#         user_turn = message
+
+#     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+#     messages.append({"role": "user", "content": user_turn})
+
+#     # Measure Qwen generation
+#     start = time.perf_counter()
+
+#     result = generator(
+#         messages,
+#         max_new_tokens=500,
+#         do_sample=True,
+#         temperature=0.4
+#     )
+
+#     generation_time = time.perf_counter() - start
+#     reply = result[0]["generated_text"][-1]["content"]
+
+#     if pieces:
+#         pages = sorted({(p["file"], p["page"]) for p in pieces})
+#         sources = [f"{f} (page {n})" for f, n in pages]
+#         reply += "\n\n**Related course pages:**\n- " + "\n- ".join(sources)
+
+#     total_time = time.perf_counter() - total_start
+
+#     # Display performance results in the chatbot
+#     reply += (
+#         "\n\n---\n"
+#         "**Performance Metrics**\n"
+#         f"- Query rewriting: {rewrite_time:.2f}s\n"
+#         f"- Document retrieval: {retrieval_time:.2f}s\n"
+#         f"- LLM generation: {generation_time:.2f}s\n"
+#         f"- Total processing: {total_time:.2f}s"
+#     )
+
+#     return reply
+
