@@ -29,13 +29,26 @@ How to behave:
 - If the student asks for a quiz or review without a topic, ask which topic they want, or suggest a few from the excerpts.
 - If the student seems confused, explain more simply and use an example."""
 
+SHORT_PROMPT = """ You are StudyAI, a friendly, conversational study partner for CSC603/803 (Generative AI: Fundamentals and Applications).
+Answer rules:
+- Put the direct answer in the first sentence. For simple questions, answer in 4-7 sentences total.
+- Do not use headings or "Explanation"/"Summary" sections. Do not restate or describe the excerpts.
+- Only add background, examples, or extra detail if the student asks for more, or asks to summarize, review, or be quizzed.
+- Treat the course excerpts as the source of truth and mention the file and page only when you rely on them. If they don't cover the question, answer from general knowledge in one sentence starting with "This isn't in the course materials, but generally...". Never make up what the course said.
+
+How to behave:
+- Be conversational, warm, and concise. Remember what was said earlier in the conversation.
+- When quizzing: ask ONE question at a time and wait for the student's answer. Then say whether it was right, explain why, and offer the next question.
+- If the student asks for a quiz or review without a topic, ask which topic they want, or suggest a few from the excerpts.
+- If the student seems confused, explain more simply and use an example."""
+
 SMALL_TALK = re.compile(
     r"^(hi|hello|hey|thanks|thank you|thx|ok|okay|cool|great|bye|got it)\b[\s!.?]*$",
     re.IGNORECASE,
 )
 
 # Requests that need more material than a single question does
-BROAD_WORDS = ("quiz", "test me", "summar", "review", "flashcard", "practice", "overview")
+BROAD_WORDS = ("quiz", "test me", "summar", "review", "flashcard", "practice", "overview", "explain", "detail")
 
 
 def text_of(content):
@@ -68,6 +81,11 @@ def clean_history(history):
         m["content"] = m["content"].split("\n\n**Related course pages:**")[0]
     return messages[-MAX_HISTORY:]
 
+def standalone_simple_question(message, history):
+    if not history or len(message.split()) > 8:
+        return message
+    last_user = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+    return f"{last_user} {message}"
 
 def standalone_question(message, history):
     """Rewrite a follow-up like 'why?' into a full search query using the chat so far."""
@@ -92,24 +110,33 @@ def standalone_question(message, history):
 def answer(message, history=None):
     history = clean_history(history or [])
 
+    is_broad = any(w in message.lower() for w in BROAD_WORDS)
+
     pieces = []
     if not SMALL_TALK.match(message.strip()):
-        query = standalone_question(message, history)
-        how_many = 8 if any(w in message.lower() for w in BROAD_WORDS) else 5
+        if not is_broad:
+            query = standalone_simple_question(message, history)
+        else:
+            query = standalone_question(message, history)
+        how_many = 8 if is_broad else 5
         pieces = find_pieces(query, how_many=how_many)
 
     context = "\n\n".join(
         f'[{p["file"]}, page {p["page"]}]\n{p["text"]}' for p in pieces
     )
-    if context:
-        user_turn = f"Course material excerpts:\n{context}\n\nStudent message: {message}"
-    else:
-        user_turn = message
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+    style = "" if is_broad else "\n\n(Answer directly in 4-7 sentences. No Headings, very little to no background.)"
+
+    if context:
+        user_turn = f"Course material excerpts:\n{context}\n\nStudent message: {message}{style}"
+    else:
+        user_turn = message + style
+
+    system_prompt = SYSTEM_PROMPT if is_broad else SHORT_PROMPT
+    messages = [{"role": "system", "content": system_prompt}] + history
     messages.append({"role": "user", "content": user_turn})
 
-    result = generator(messages, max_new_tokens=500, do_sample=True, temperature=0.4)
+    result = generator(messages, max_new_tokens=500 if is_broad else 250, do_sample=True, temperature=0.4)
     reply = result[0]["generated_text"][-1]["content"]
 
     if pieces:
